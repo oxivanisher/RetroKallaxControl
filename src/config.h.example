@@ -1,0 +1,23 @@
+#ifndef __CONFIG_H
+  #define __CONFIG_H
+
+ /************************ Development settings ********************************/
+  //#define DEBUG
+  #define VERSION         "0.1"
+  #define SERIAL_BAUD     115200
+
+  /************************* WiFi Access Point *********************************/
+  #define WIFI_SSID       ""
+  #define WIFI_PASSWORD   ""
+  #define CONNECT_TIMEOUT 5
+
+  /***************************** MQTT Setup ***********************************/
+  #define MQTT_SERVER     ""
+  #define MQTT_SERVERPORT 1883
+  #define MQTT_USERNAME   ""
+  #define MQTT_PASSWORD   ""
+
+  /*************************** Features Setup *********************************/
+
+
+#endif

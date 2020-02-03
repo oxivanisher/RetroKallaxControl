@@ -1,3 +1,16 @@
+# Project CFG
+src/config.h
+
+# PlatformIO
+.pio
+.pioenvs
+.piolibdeps
+
+# VS code
+.vscode
+.clang_complete
+.gcc-flags.json
+
 # Prerequisites
 *.d
 
