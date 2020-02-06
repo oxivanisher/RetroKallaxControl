@@ -23,3 +23,7 @@ This topic is subscribed and switches on the relais 0-15. To switch the relais o
 
 ### /RetroKallaxControl/<MAC>/atenCommand
 This topic is subscribed and forwards all recieved strings to the serial port for the Aten HDMI switch.
+
+
+## Knowledgebase and sources
+* https://github.com/WereCatf/PCF8574_ESP/blob/master/examples/pcf8574_esp8266/pcf8574_esp8266.ino

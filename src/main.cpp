@@ -1,7 +1,8 @@
 #include "ESP8266WiFi.h"
 #include <PubSubClient.h>
-#include <CD74HC4067.h>
 #include <SoftwareSerial.h>
+#include <pcf8574_esp.h>
+#include <Wire.h>
 
 // Read settingd from config.h
 #include "config.h"
@@ -16,7 +17,7 @@
 
 // Logic switches
 bool readyToUpload = false;
-long lastMsg = 0;
+//long lastMsg = 0;
 bool initialPublish = false;
 
 // Create an ESP8266 WiFiClient class to connect to the MQTT server.
@@ -38,11 +39,25 @@ SoftwareSerial atenSerial(21, 22); // RX, TX
 // RootTopic
 char rootTopic[37];
 
-// Create mux objects
-CD74HC4067 relaisMux(20, 19, 18, 17); // D1, D2, D3, D4
-CD74HC4067 switchMux(5, 6, 7, 8); // D5, D6, D7, D8
-const int relaisDataPin = D0; // Pin 4
-const int switchDataPin = A0; // Pin 2
+// Set I2C addresses
+
+/* DO NOT FORGET TO WIRE ACCORDINGLY, SDA GOES TO GPIO5, SCL TO GPIO4 (ON NODEMCU GPIO5 IS D1 AND GPIO4 IS D2) */
+TwoWire triggerWire;
+TwoWire relaisWire;
+
+// Initialize a PCF8574 at I2C-address 0x20, using GPIO5, GPIO4 and testWire for the I2C-bus
+int triggerAddress = 0x20;
+int relaisAddress = 0x21;
+
+PCF857x triggers(triggerAddress, &triggerWire, true);
+PCF857x relais(relaisAddress, &relaisWire, true);
+
+// Interrupt
+volatile bool triggerInterruptFlag = false;
+
+void triggerInterrupt() {
+  triggerInterruptFlag = true;
+}
 
 void atenSendCommand(String command) {
   DEBUG_PRINT("Sending Aten serial command: ");
@@ -97,7 +112,6 @@ bool mqttReconnect() {
 
 // connect to wifi
 bool wifiConnect() {
-  bool blinkState = true;
   wifiConnectionRetries += 1;
   int retryCounter = CONNECT_TIMEOUT * 1000;
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
@@ -140,48 +154,38 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   DEBUG_PRINTLN("]");
 
   if (strcmp(topic,"atenCommand")==0) {
+    // send serial command to HDMI Switch
     atenSendCommand(String((char*)payload));
   }
 
   if (strcmp(topic,"relais")==0) {
-    // switch on relais
-
+    // switch relais on or off
+    char channelChar[2];
     unsigned int counter = 0;
     for (unsigned int i = 0; i < length; i++) {
       if ((char)payload[i] == '/') {
         counter = 0;
+        memset(channelChar, 0, sizeof channelChar);
       }
-      if (counter > 1) {
-
+      if (counter < 2) {
+        channelChar[counter] = (char)payload[i];
       }
       counter++;
     }
 
-    char channelChar[2];
-
-
-    switchMux.channel( );
-
     if ((char)payload[0] == '1') {
       DEBUG_PRINT("Enabling relais ");
-      DEBUG_PRINTLN(channel);
-      digitalWrite(relaisDataPin, 1);
+      DEBUG_PRINTLN(channelChar);
+      relais.write( (int)channelChar, 1 );
     } else {
       DEBUG_PRINT("Disabling relais ");
-      DEBUG_PRINTLN(channel);
-      digitalWrite(relaisDataPin, 0);
+      DEBUG_PRINTLN(channelChar);
+      relais.write( (int)channelChar, 0 );
     }
   }
 
-
   // setting lastMsg to push the next publish cycle into the future
-  lastMsg = millis();
-
-  if ((char)payload[0] == '0') {
-      // blah
-  }
-
-  //return false;
+  //lastMsg = millis();
 }
 
 void setup() {
@@ -191,13 +195,16 @@ void setup() {
   delay(3000);
   #endif
 
-  // Start the Pub/Sub client
-  mqttClient.setServer(MQTT_SERVER, MQTT_SERVERPORT);
-  mqttClient.setCallback(mqttCallback);
+  // initialize Wire lib
+  Wire.begin(5, 4);
+  Wire.setClock(400000L);
+  triggers.begin();
+  relais.begin();
 
-  // Set pin modes
-  pinMode(relaisDataPin, OUTPUT);
-  pinMode(switchDataPin, INPUT);
+  // Most ready-made PCF8574-modules seem to lack an internal pullup-resistor, so you have to use the ESP8266-internal one.
+  pinMode(14, INPUT_PULLUP);
+  triggers.resetInterruptPin();
+  attachInterrupt(digitalPinToInterrupt(14), triggerInterrupt, FALLING);
 
   // Setup serial port for the aten HDMI switch
   atenSerial.begin(19200);
@@ -251,19 +258,30 @@ void loop() {
   }
 
   // dummy example
-  int value = 0;
-  for (int i = 0; i < 16; i++) {
+  if(triggerInterruptFlag){
+    DEBUG_PRINTLN("Got an interrupt: ");
+    if(triggers.read(3)==HIGH) DEBUG_PRINTLN("Pin 3 is HIGH!");
+    else DEBUG_PRINTLN("Pin 3 is LOW!");
+    // DO NOTE: When you write LOW to a pin on a PCF8574 it becomes an OUTPUT.
+    // It wouldn't generate an interrupt if you were to connect a button to it that pulls it HIGH when you press the button.
+    // Any pin you wish to use as input must be written HIGH and be pulled LOW to generate an interrupt.
+    relais.write(7, triggers.read(3));
 
-    switchMux.channel(i);
-    relaisMux.channel(i);
+    int detectedTrigger = 99;
+    char* newValue = "0";
+    triggerInterruptFlag=false;
 
-    // read value
-    value = analogRead(switchDataPin);
 
-    // set same value on relais (makes no sense, because analog to digital)
-    digitalWrite(relaisDataPin, value);
+    if (initialPublish) {
+
+      char triggerTopic[40];
+      strcat(triggerTopic, rootTopic);
+      strcat(triggerTopic, "/");
+      strcat(triggerTopic, (char*)detectedTrigger);
+      mqttClient.publish(triggerTopic, newValue, true);
+    }
+
   }
-
 
   // calling loop at the end as proposed
   mqttClient.loop();
