@@ -1,6 +1,7 @@
 #include "ESP8266WiFi.h"
 #include <PubSubClient.h>
 #include <CD74HC4067.h>
+#include <SoftwareSerial.h>
 
 // Read settingd from config.h
 #include "config.h"
@@ -31,11 +32,23 @@ String s = String();
 // Variable to store Wifi retries (required to catch some problems when i.e. the wifi ap mac address changes)
 uint8_t wifiConnectionRetries = 0;
 
+// SoftwareSerial for Aten connection
+SoftwareSerial atenSerial(21, 22); // RX, TX
+
+// RootTopic
+char rootTopic[37];
+
 // Create mux objects
 CD74HC4067 relaisMux(20, 19, 18, 17); // D1, D2, D3, D4
 CD74HC4067 switchMux(5, 6, 7, 8); // D5, D6, D7, D8
 const int relaisDataPin = D0; // Pin 4
 const int switchDataPin = A0; // Pin 2
+
+void atenSendCommand(String command) {
+  DEBUG_PRINT("Sending Aten serial command: ");
+  DEBUG_PRINT(command)
+  atenSerial.println(command);
+}
 
 bool mqttReconnect() {
   // Create a client ID based on the MAC address
@@ -67,10 +80,9 @@ bool mqttReconnect() {
       mqttClient.subscribe("/RetroKallaxControl/all", 1);
 
       // subscript to the mac address (private) topic
-      char topic[37];
-      strcat(topic, "/RetroKallaxControl/");
-      strcat(topic, clientMac.c_str());
-      mqttClient.subscribe(topic, 1);
+      strcat(rootTopic, "/RetroKallaxControl/");
+      strcat(rootTopic, clientMac.c_str());
+      mqttClient.subscribe(rootTopic, 1);
       return true;
     } else {
       DEBUG_PRINT("failed, rc=");
@@ -117,20 +129,24 @@ bool wifiConnect() {
 
 // logic
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
+
   payload[length] = '\0';
-  unsigned int numOfOptions = 0;
   DEBUG_PRINT("Message arrived: Topic [");
   DEBUG_PRINT(topic);
   DEBUG_PRINT("] | Data [");
   for (unsigned int i = 0; i < length; i++) {
     DEBUG_PRINT((char)payload[i]);
-    if ((char)payload[i] == ';') {
-      numOfOptions++;
-    }
   }
-  DEBUG_PRINT("] - Found ");
-  DEBUG_PRINT(numOfOptions);
-  DEBUG_PRINTLN(" options.");
+  DEBUG_PRINTLN("]");
+
+  if (strcmp(topic,"atenCommand")==0) {
+    atenSendCommand(String((char*)payload));
+  }
+
+  if (strcmp(topic,"relais")==0) {
+    // switch on relais
+  }
+
 
   // setting lastMsg to push the next publish cycle into the future
   lastMsg = millis();
@@ -156,6 +172,9 @@ void setup() {
   // Set pin modes
   pinMode(relaisDataPin, OUTPUT);
   pinMode(switchDataPin, INPUT);
+
+  // Setup serial port for the aten HDMI switch
+  atenSerial.begin(19200);
 
   // initial delay to let millis not be 0
   delay(1);
