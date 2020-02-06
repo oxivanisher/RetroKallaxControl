@@ -15,9 +15,11 @@ A project for a Wemos D1 Mini to read 16 switch states wit a muxer, set 16 relai
 ### /RetroKallaxControl/discovery/<MAC>
 Do make it discoverable, it publishes its `VERSION` to this topic.
 
+
 ### /RetroKallaxControl/<MAC>/trigger
+
+### /RetroKallaxControl/<MAC>/relais/[0-15]
+This topic is subscribed and switches on the relais 0-15. To switch the relais on, send `1` to switch it off send `0`.
 
 ### /RetroKallaxControl/<MAC>/atenCommand
 This topic is subscribed and forwards all recieved strings to the serial port for the Aten HDMI switch.
-
-### /RetroKallaxControl/<MAC>/relais

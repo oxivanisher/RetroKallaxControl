@@ -145,6 +145,32 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
   if (strcmp(topic,"relais")==0) {
     // switch on relais
+
+    unsigned int counter = 0;
+    for (unsigned int i = 0; i < length; i++) {
+      if ((char)payload[i] == '/') {
+        counter = 0;
+      }
+      if (counter > 1) {
+
+      }
+      counter++;
+    }
+
+    char channelChar[2];
+
+
+    switchMux.channel( );
+
+    if ((char)payload[0] == '1') {
+      DEBUG_PRINT("Enabling relais ");
+      DEBUG_PRINTLN(channel);
+      digitalWrite(relaisDataPin, 1);
+    } else {
+      DEBUG_PRINT("Disabling relais ");
+      DEBUG_PRINTLN(channel);
+      digitalWrite(relaisDataPin, 0);
+    }
   }
 
 
