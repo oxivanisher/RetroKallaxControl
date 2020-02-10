@@ -27,8 +27,6 @@ WiFiClient espClient;
 
 // Initialize MQTT
 PubSubClient mqttClient(espClient);
-// used for splitting arguments to effects
-String s = String();
 
 // Variable to store Wifi retries (required to catch some problems when i.e. the wifi ap mac address changes)
 uint8_t wifiConnectionRetries = 0;
@@ -208,6 +206,10 @@ void setup() {
 
   // Setup serial port for the aten HDMI switch
   atenSerial.begin(19200);
+
+  // Start the Pub/Sub client
+  mqttClient.setServer(MQTT_SERVER, MQTT_SERVERPORT);
+  mqttClient.setCallback(mqttCallback);
 
   // initial delay to let millis not be 0
   delay(1);
