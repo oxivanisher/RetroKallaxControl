@@ -50,6 +50,9 @@ int relaisAddress = 0x21;
 PCF857x triggers(triggerAddress, &triggerWire, true);
 PCF857x relais(relaisAddress, &relaisWire, true);
 
+// Array to store the trigger states between interrupts
+uint8_t triggerCache[16];
+
 // Interrupt
 volatile bool triggerInterruptFlag = false;
 
@@ -174,16 +177,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if ((char)payload[0] == '1') {
       DEBUG_PRINT("Enabling relais ");
       DEBUG_PRINTLN(channelChar);
-      relais.write( (int)channelChar, 1 );
+      relais.write( (int)channelChar, HIGH );
     } else {
       DEBUG_PRINT("Disabling relais ");
       DEBUG_PRINTLN(channelChar);
-      relais.write( (int)channelChar, 0 );
+      relais.write( (int)channelChar, LOW );
     }
   }
-
-  // setting lastMsg to push the next publish cycle into the future
-  //lastMsg = millis();
 }
 
 void setup() {
@@ -216,6 +216,27 @@ void setup() {
 
   // initial wifi connect
   wifiConnect();
+
+  // read current trigger states and fill the cache
+  for (unsigned int i = 0; i < 16; i++) {
+    DEBUG_PRINTLN("Reading initial trigger states:");
+    triggerCache[i] = triggers.read(i);
+  }
+  DEBUG_PRINTLN();
+}
+
+bool submitTrigger(uint8_t detectedTrigger) {
+  if (initialPublish) {
+    char triggerTopic[40];
+    strcat(triggerTopic, rootTopic);
+    strcat(triggerTopic, "/");
+    strcat(triggerTopic, (char*)detectedTrigger);
+    mqttClient.publish(triggerTopic, (char*)triggers.read(detectedTrigger), true);
+    return true;
+  } else {
+    DEBUG_PRINTLN("Unable to send trigger to MQTT since no initial publish happend. Will retry on next interrupt.");
+    return false;
+  }
 }
 
 void loop() {
@@ -261,30 +282,24 @@ void loop() {
 
   // dummy example
   if(triggerInterruptFlag){
-    DEBUG_PRINTLN("Got an interrupt: ");
-    if(triggers.read(3)==HIGH) DEBUG_PRINTLN("Pin 3 is HIGH!");
-    else DEBUG_PRINTLN("Pin 3 is LOW!");
+    DEBUG_PRINT("Got an interrupt. Changed trigger(s):");
+    for (unsigned int i = 0; i < 16; i++) {
+      if (triggerCache[i] != triggers.read(i)) {
+        DEBUG_PRINT(">   ");
+        DEBUG_PRINT(i);
+        if(triggers.read(i)==HIGH) DEBUG_PRINTLN(" is now HIGH");
+        else DEBUG_PRINTLN(" is now LOW");
+        if (submitTrigger(i)) triggerCache[i] = triggers.read(i);
+      }
+
     // DO NOTE: When you write LOW to a pin on a PCF8574 it becomes an OUTPUT.
     // It wouldn't generate an interrupt if you were to connect a button to it that pulls it HIGH when you press the button.
     // Any pin you wish to use as input must be written HIGH and be pulled LOW to generate an interrupt.
-    relais.write(7, triggers.read(3));
 
-    int detectedTrigger = 99;
-    char* newValue = "0";
     triggerInterruptFlag=false;
-
-
-    if (initialPublish) {
-
-      char triggerTopic[40];
-      strcat(triggerTopic, rootTopic);
-      strcat(triggerTopic, "/");
-      strcat(triggerTopic, (char*)detectedTrigger);
-      mqttClient.publish(triggerTopic, newValue, true);
-    }
-
   }
 
   // calling loop at the end as proposed
   mqttClient.loop();
+  }
 }
