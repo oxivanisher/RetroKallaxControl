@@ -62,7 +62,7 @@ void triggerInterrupt() {
 
 void atenSendCommand(String command) {
   DEBUG_PRINT("Sending Aten serial command: ");
-  DEBUG_PRINT(command)
+  DEBUG_PRINT(command);
   atenSerial.println(command);
 }
 
