@@ -56,14 +56,15 @@ uint8_t triggerCache[16];
 // Interrupt
 volatile bool triggerInterruptFlag = false;
 
-void triggerInterrupt() {
+void ICACHE_RAM_ATTR triggerInterrupt() {
   triggerInterruptFlag = true;
 }
 
 void atenSendCommand(String command) {
-  DEBUG_PRINT("Sending Aten serial command: ");
+  DEBUG_PRINT("Sending Aten command on serial port: ");
   DEBUG_PRINT(command);
   atenSerial.println(command);
+  DEBUG_PRINTLN();
 }
 
 bool mqttReconnect() {
@@ -80,7 +81,7 @@ bool mqttReconnect() {
       return false;
     }
 
-    DEBUG_PRINT("Attempting MQTT connection...");
+    DEBUG_PRINT("Attempting MQTT connection... ");
 
     // Attempt to connect
     String clientMac = WiFi.macAddress();
@@ -93,12 +94,16 @@ bool mqttReconnect() {
       mqttClient.publish(lastWillTopic, "", true);
 
       // subscribe to "all" topic
-      mqttClient.subscribe("/RetroKallaxControl/all", 1);
+      mqttClient.subscribe("/RetroKallaxControl/all/#", 1);
+      DEBUG_PRINTLN("Subscribed to /RetroKallaxControl/all/#");
 
       // subscript to the mac address (private) topic
       strcat(rootTopic, "/RetroKallaxControl/");
       strcat(rootTopic, clientMac.c_str());
+      strcat(rootTopic, "/#");
       mqttClient.subscribe(rootTopic, 1);
+      DEBUG_PRINT("Subscribed to ");
+      DEBUG_PRINTLN(rootTopic);
       return true;
     } else {
       DEBUG_PRINT("failed, rc=");
@@ -154,22 +159,24 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
   DEBUG_PRINTLN("]");
 
-  if (strcmp(topic,"atenCommand")==0) {
+  if (strstr(topic,"atenCommand")) {
     // send serial command to HDMI Switch
+    // https://assets.aten.com/product/manual/vs0801h_w-2017-02-06.pdf
     atenSendCommand(String((char*)payload));
   }
 
-  if (strcmp(topic,"relais")==0) {
+  if (strstr(topic,"relais")) {
     // switch relais on or off
     char channelChar[2];
     unsigned int counter = 0;
-    for (unsigned int i = 0; i < length; i++) {
-      if ((char)payload[i] == '/') {
+    for (unsigned int i = 0; i < strlen(topic); i++) {
+      if ((char)topic[i] == '/') {
         counter = 0;
         memset(channelChar, 0, sizeof channelChar);
+        continue;
       }
       if (counter < 2) {
-        channelChar[counter] = (char)payload[i];
+        channelChar[counter] = (char)topic[i];
       }
       counter++;
     }
@@ -218,20 +225,25 @@ void setup() {
   wifiConnect();
 
   // read current trigger states and fill the cache
+  DEBUG_PRINTLN("Reading initial trigger states:");
   for (unsigned int i = 0; i < 16; i++) {
-    DEBUG_PRINTLN("Reading initial trigger states:");
     triggerCache[i] = triggers.read(i);
+    DEBUG_PRINT("        ");
+    DEBUG_PRINT(i);
+    DEBUG_PRINT(": ");
+    DEBUG_PRINTLN(triggerCache[i]);
   }
-  DEBUG_PRINTLN();
 }
 
 bool submitTrigger(uint8_t detectedTrigger) {
   if (initialPublish) {
     char triggerTopic[40];
+    char * detectedCharTrigger = (char*) &detectedTrigger;
     strcat(triggerTopic, rootTopic);
     strcat(triggerTopic, "/");
-    strcat(triggerTopic, (char*)detectedTrigger);
-    mqttClient.publish(triggerTopic, (char*)triggers.read(detectedTrigger), true);
+    strcat(triggerTopic, detectedCharTrigger);
+    uint8_t detectedValue = triggers.read(detectedTrigger);
+    mqttClient.publish(triggerTopic, (char *) &detectedValue, true);
     return true;
   } else {
     DEBUG_PRINTLN("Unable to send trigger to MQTT since no initial publish happend. Will retry on next interrupt.");
@@ -250,7 +262,7 @@ void loop() {
   }
 
   if ((WiFi.status() == WL_CONNECTED) && (!mqttClient.connected())) {
-    DEBUG_PRINTLN("MQTT is not connected, let's try to reconnect");
+    DEBUG_PRINTLN("MQTT is not connected, let's try to (re)connect");
     if (! mqttReconnect()) {
       // This should not happen, but seems to...
       DEBUG_PRINTLN("MQTT was unable to connect! Exiting the upload loop");
@@ -258,7 +270,7 @@ void loop() {
       initialPublish = false;
     } else {
       // readyToUpload = true;
-      DEBUG_PRINTLN("MQTT successfully reconnected");
+      DEBUG_PRINTLN("MQTT successfully (re)connected");
     }
   }
 
@@ -292,14 +304,13 @@ void loop() {
         if (submitTrigger(i)) triggerCache[i] = triggers.read(i);
       }
 
-    // DO NOTE: When you write LOW to a pin on a PCF8574 it becomes an OUTPUT.
-    // It wouldn't generate an interrupt if you were to connect a button to it that pulls it HIGH when you press the button.
-    // Any pin you wish to use as input must be written HIGH and be pulled LOW to generate an interrupt.
-
-    triggerInterruptFlag=false;
+      // DO NOTE: When you write LOW to a pin on a PCF8574 it becomes an OUTPUT.
+      // It wouldn't generate an interrupt if you were to connect a button to it that pulls it HIGH when you press the button.
+      // Any pin you wish to use as input must be written HIGH and be pulled LOW to generate an interrupt.
+      triggerInterruptFlag=false;
+    }
   }
 
   // calling loop at the end as proposed
   mqttClient.loop();
-  }
 }

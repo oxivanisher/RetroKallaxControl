@@ -22,7 +22,7 @@ Do make it discoverable, it publishes its `VERSION` to this topic.
 This topic is subscribed and switches on the relais 0-15. To switch the relais on, send `1` to switch it off send `0`.
 
 ### /RetroKallaxControl/<MAC>/atenCommand
-This topic is subscribed and forwards all recieved strings to the serial port for the Aten HDMI switch.
+This topic is subscribed and forwards all recieved strings to the serial port for the Aten HDMI switch. The commands can be found here: https://assets.aten.com/product/manual/vs0801h_w-2017-02-06.pdf
 
 
 ## Knowledgebase and sources
