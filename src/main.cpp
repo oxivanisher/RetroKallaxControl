@@ -1,49 +1,53 @@
-#include "ESP8266WiFi.h"
 #include <PubSubClient.h>
-#include <SoftwareSerial.h>
-#include <pcf8574_esp.h>
+
+#include "ESP8266WiFi.h"
+//#include <SoftwareSerial.h>
 #include <Wire.h>
+#include <pcf8574_esp.h>
 
 // Read settingd from config.h
 #include "config.h"
 
 #ifdef DEBUG
-  #define DEBUG_PRINT(x) Serial.print (x)
-  #define DEBUG_PRINTLN(x) Serial.println (x)
+#define DEBUG_PRINT(x) Serial.print(x)
+#define DEBUG_PRINTLN(x) Serial.println(x)
 #else
-  #define DEBUG_PRINT(x)
-  #define DEBUG_PRINTLN(x)
+#define DEBUG_PRINT(x)
+#define DEBUG_PRINTLN(x)
 #endif
 
 // Logic switches
 bool readyToUpload = false;
-//long lastMsg = 0;
+// long lastMsg = 0;
 bool initialPublish = false;
 
 // Create an ESP8266 WiFiClient class to connect to the MQTT server.
 WiFiClient espClient;
 // or... use WiFiFlientSecure for SSL
-//WiFiClientSecure espClient;
+// WiFiClientSecure espClient;
 
 // Initialize MQTT
 PubSubClient mqttClient(espClient);
 
-// Variable to store Wifi retries (required to catch some problems when i.e. the wifi ap mac address changes)
+// Variable to store Wifi retries (required to catch some problems when i.e. the
+// wifi ap mac address changes)
 uint8_t wifiConnectionRetries = 0;
 
 // SoftwareSerial for Aten connection
-SoftwareSerial atenSerial(21, 22); // RX, TX
+// SoftwareSerial atenSerial(17, 18); // RX, TX
 
 // RootTopic
 char rootTopic[37];
 
 // Set I2C addresses
 
-/* DO NOT FORGET TO WIRE ACCORDINGLY, SDA GOES TO GPIO5, SCL TO GPIO4 (ON NODEMCU GPIO5 IS D1 AND GPIO4 IS D2) */
+/* DO NOT FORGET TO WIRE ACCORDINGLY, SDA GOES TO GPIO5, SCL TO GPIO4 (ON
+ * NODEMCU GPIO5 IS D1 AND GPIO4 IS D2) */
 TwoWire triggerWire;
 TwoWire relaisWire;
 
-// Initialize a PCF8574 at I2C-address 0x20, using GPIO5, GPIO4 and testWire for the I2C-bus
+// Initialize a PCF8574 at I2C-address 0x20, using GPIO5, GPIO4 and testWire for
+// the I2C-bus
 int triggerAddress = 0x20;
 int relaisAddress = 0x21;
 
@@ -56,14 +60,13 @@ uint8_t triggerCache[16];
 // Interrupt
 volatile bool triggerInterruptFlag = false;
 
-void ICACHE_RAM_ATTR triggerInterrupt() {
-  triggerInterruptFlag = true;
-}
+void ICACHE_RAM_ATTR triggerInterrupt() { triggerInterruptFlag = true; }
 
 void atenSendCommand(String command) {
-  DEBUG_PRINT("Sending Aten command on serial port: ");
+  DEBUG_PRINT("Sending Aten command on seri al port: ");
   DEBUG_PRINT(command);
-  atenSerial.println(command);
+  // atenSerial.println(command);
+  Serial1.println(command);
   DEBUG_PRINTLN();
 }
 
@@ -87,7 +90,8 @@ bool mqttReconnect() {
     String clientMac = WiFi.macAddress();
     char lastWillTopic[46] = "/RetroKallaxControl/lastwill/";
     strcat(lastWillTopic, clientMac.c_str());
-    if (mqttClient.connect(clientId.c_str(), MQTT_USERNAME, MQTT_PASSWORD, lastWillTopic, 1, 1, clientMac.c_str())) {
+    if (mqttClient.connect(clientId.c_str(), MQTT_USERNAME, MQTT_PASSWORD,
+                           lastWillTopic, 1, 1, clientMac.c_str())) {
       DEBUG_PRINTLN("connected");
 
       // clearing last will message
@@ -122,7 +126,7 @@ bool wifiConnect() {
   int retryCounter = CONNECT_TIMEOUT * 1000;
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  WiFi.mode(WIFI_STA); //  Force the ESP into client-only mode
+  WiFi.mode(WIFI_STA);  //  Force the ESP into client-only mode
   delay(1);
   DEBUG_PRINT("My Mac: ");
   DEBUG_PRINTLN(WiFi.macAddress());
@@ -134,7 +138,8 @@ bool wifiConnect() {
     if (retryCounter <= 0) {
       DEBUG_PRINTLN(" timeout reached!");
       if (wifiConnectionRetries > 19) {
-        DEBUG_PRINTLN("Wifi connection not sucessful after 20 tries. Resetting ESP8266!");
+        DEBUG_PRINTLN(
+            "Wifi connection not sucessful after 20 tries. Resetting ESP8266!");
         ESP.restart();
       }
       return false;
@@ -148,8 +153,7 @@ bool wifiConnect() {
 }
 
 // logic
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-
+void mqttCallback(char *topic, byte *payload, unsigned int length) {
   payload[length] = '\0';
   DEBUG_PRINT("Message arrived: Topic [");
   DEBUG_PRINT(topic);
@@ -159,13 +163,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
   DEBUG_PRINTLN("]");
 
-  if (strstr(topic,"atenCommand")) {
+  if (strstr(topic, "atenCommand")) {
     // send serial command to HDMI Switch
     // https://assets.aten.com/product/manual/vs0801h_w-2017-02-06.pdf
-    atenSendCommand(String((char*)payload));
+    atenSendCommand(String((char *)payload));
   }
 
-  if (strstr(topic,"relais")) {
+  if (strstr(topic, "relais")) {
     // switch relais on or off
     char channelChar[2];
     unsigned int counter = 0;
@@ -184,35 +188,37 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if ((char)payload[0] == '1') {
       DEBUG_PRINT("Enabling relais ");
       DEBUG_PRINTLN(channelChar);
-      relais.write( (int)channelChar, HIGH );
+      relais.write((int)channelChar, HIGH);
     } else {
       DEBUG_PRINT("Disabling relais ");
       DEBUG_PRINTLN(channelChar);
-      relais.write( (int)channelChar, LOW );
+      relais.write((int)channelChar, LOW);
     }
   }
 }
 
 void setup() {
-  #ifdef DEBUG
-  Serial.begin(SERIAL_BAUD); // initialize serial connection
+#ifdef DEBUG
+  Serial.begin(SERIAL_BAUD);  // initialize serial connection
   // delay for the serial monitor to start
   delay(3000);
-  #endif
+#endif
+  Serial1.begin(19200);
 
   // initialize Wire lib
-  Wire.begin(5, 4);
-  Wire.setClock(400000L);
+  Wire.begin(D2, D1);
+  Wire.setClock(100000L);
   triggers.begin();
   relais.begin();
 
-  // Most ready-made PCF8574-modules seem to lack an internal pullup-resistor, so you have to use the ESP8266-internal one.
-  pinMode(14, INPUT_PULLUP);
+  // Most ready-made PCF8574-modules seem to lack an internal pullup-resistor,
+  // so you have to use the ESP8266-internal one.
+  pinMode(D5, INPUT_PULLUP);
   triggers.resetInterruptPin();
-  attachInterrupt(digitalPinToInterrupt(14), triggerInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(D5), triggerInterrupt, FALLING);
 
   // Setup serial port for the aten HDMI switch
-  atenSerial.begin(19200);
+  // atenSerial.begin(19200);
 
   // Start the Pub/Sub client
   mqttClient.setServer(MQTT_SERVER, MQTT_SERVERPORT);
@@ -238,24 +244,24 @@ void setup() {
 bool submitTrigger(uint8_t detectedTrigger) {
   if (initialPublish) {
     char triggerTopic[40];
-    char * detectedCharTrigger = (char*) &detectedTrigger;
+    char *detectedCharTrigger = (char *)&detectedTrigger;
     strcat(triggerTopic, rootTopic);
     strcat(triggerTopic, "/");
     strcat(triggerTopic, detectedCharTrigger);
     uint8_t detectedValue = triggers.read(detectedTrigger);
-    mqttClient.publish(triggerTopic, (char *) &detectedValue, true);
+    mqttClient.publish(triggerTopic, (char *)&detectedValue, true);
     return true;
   } else {
-    DEBUG_PRINTLN("Unable to send trigger to MQTT since no initial publish happend. Will retry on next interrupt.");
+    DEBUG_PRINTLN(
+        "Unable to send trigger to MQTT since no initial publish happend. Will "
+        "retry on next interrupt.");
     return false;
   }
 }
 
 void loop() {
-
   // Check if the wifi is connected
   if (WiFi.status() != WL_CONNECTED) {
-
     DEBUG_PRINTLN("Calling wifiConnect() as it seems to be required");
     wifiConnect();
     DEBUG_PRINTLN("My MAC: " + String(WiFi.macAddress()));
@@ -263,7 +269,7 @@ void loop() {
 
   if ((WiFi.status() == WL_CONNECTED) && (!mqttClient.connected())) {
     DEBUG_PRINTLN("MQTT is not connected, let's try to (re)connect");
-    if (! mqttReconnect()) {
+    if (!mqttReconnect()) {
       // This should not happen, but seems to...
       DEBUG_PRINTLN("MQTT was unable to connect! Exiting the upload loop");
       // force reconnect to mqtt
@@ -277,7 +283,7 @@ void loop() {
   if ((WiFi.status() == WL_CONNECTED) && (!initialPublish)) {
     DEBUG_PRINT("MQTT discovery publish loop:");
 
-    String clientMac = WiFi.macAddress(); // 17 chars
+    String clientMac = WiFi.macAddress();  // 17 chars
     char topic[47] = "/RetroKallaxControl/discovery/";
     strcat(topic, clientMac.c_str());
 
@@ -286,28 +292,31 @@ void loop() {
       DEBUG_PRINTLN(" successful");
 
       initialPublish = true;
-
     } else {
       DEBUG_PRINTLN(" FAILED!");
     }
   }
 
   // dummy example
-  if(triggerInterruptFlag){
+  if (triggerInterruptFlag) {
     DEBUG_PRINT("Got an interrupt. Changed trigger(s):");
     for (unsigned int i = 0; i < 16; i++) {
       if (triggerCache[i] != triggers.read(i)) {
         DEBUG_PRINT(">   ");
         DEBUG_PRINT(i);
-        if(triggers.read(i)==HIGH) DEBUG_PRINTLN(" is now HIGH");
-        else DEBUG_PRINTLN(" is now LOW");
+        if (triggers.read(i) == HIGH)
+          DEBUG_PRINTLN(" is now HIGH");
+        else
+          DEBUG_PRINTLN(" is now LOW");
         if (submitTrigger(i)) triggerCache[i] = triggers.read(i);
       }
 
       // DO NOTE: When you write LOW to a pin on a PCF8574 it becomes an OUTPUT.
-      // It wouldn't generate an interrupt if you were to connect a button to it that pulls it HIGH when you press the button.
-      // Any pin you wish to use as input must be written HIGH and be pulled LOW to generate an interrupt.
-      triggerInterruptFlag=false;
+      // It wouldn't generate an interrupt if you were to connect a button to it
+      // that pulls it HIGH when you press the button. Any pin you wish to use
+      // as input must be written HIGH and be pulled LOW to generate an
+      // interrupt.
+      triggerInterruptFlag = false;
     }
   }
 
